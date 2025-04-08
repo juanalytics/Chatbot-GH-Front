@@ -5,7 +5,8 @@ import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { sendPrompt } from "@/services/chat"; // Import the service
+import { sendPrompt } from "@/services/chat";
+import { msalInstance, loginRequest } from "@/lib/authConfig";
 
 interface Message {
   id: string;
@@ -18,19 +19,28 @@ export default function ChatbotPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
-      content:
-        "Hola! Soy tu Asistente Zoe Virtual. ¿Cómo te puedo ayudar el día de hoy?",
+      content: "Hola! Soy tu Asistente Zoe Virtual. ¿Cómo te puedo ayudar hoy?",
       role: "assistant",
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAuthInitialized, setIsAuthInitialized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // For now we set a demo token. Replace this with your actual token retrieval logic.
-  const token = "DEMO_TOKEN";
-  const userID = "DEMO_USER_ID";
+  // Initialize MSAL on mount.
+  useEffect(() => {
+    async function initializeAuth() {
+      try {
+        await msalInstance.initialize();
+        setIsAuthInitialized(true);
+      } catch (error) {
+        console.error("MSAL initialization error:", error);
+      }
+    }
+    initializeAuth();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -40,12 +50,45 @@ export default function ChatbotPage() {
     scrollToBottom();
   }, [messages]);
 
+  // Ad hoc function to acquire token and user information
+  const getTokenAndUser = async () => {
+    if (!isAuthInitialized) {
+      throw new Error("MSAL is not initialized yet");
+    }
+    let accounts = msalInstance.getAllAccounts();
+
+    if (accounts.length === 0) {
+      // Trigger login if no account is found.
+      try {
+        await msalInstance.loginPopup(loginRequest);
+      } catch (error) {
+        // Handle popup cancellation or errors.
+        console.error("loginPopup error:", error);
+        throw error;
+      }
+      accounts = msalInstance.getAllAccounts();
+      if (accounts.length === 0) {
+        throw new Error("Login was not completed. No accounts available.");
+      }
+    }
+
+    const account = accounts[0];
+    const tokenResponse = await msalInstance.acquireTokenSilent({
+      ...loginRequest,
+      account,
+    });
+
+    return {
+      idToken: tokenResponse.idToken,
+      userID: account.username,
+    };
+  };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
-
     if (!input.trim()) return;
 
-    // Add the user message to the chat history.
+    // Add the user's message to the chat history.
     const userMessage: Message = {
       id: Date.now().toString(),
       content: input,
@@ -58,13 +101,15 @@ export default function ChatbotPage() {
     setIsLoading(true);
 
     try {
-      // Call the backend via the service function.
-      const response = await sendPrompt(userMessage.content, token, userID);
+      // Get token and user info ad hoc
+      const { idToken, userID } = await getTokenAndUser();
 
-      // Assuming the response is a text string, wrap it as a message.
+      // Send prompt to backend via our service function
+      const response = await sendPrompt(userMessage.content, idToken, userID);
+
       const botResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: response.answer, // Adjust if response has a different structure.
+        content: response.answer,
         role: "assistant",
         timestamp: new Date(),
       };
@@ -72,10 +117,9 @@ export default function ChatbotPage() {
       setMessages((prev) => [...prev, botResponse]);
     } catch (error) {
       console.error("Error sending prompt:", error);
-      // Optionally, add an error message to the chat.
       const errorMessage: Message = {
         id: (Date.now() + 2).toString(),
-        content: "Hubo un herror contactando a Zoe. Intenta nuevamente en unos minutos.",
+        content: "There was an error contacting the server.",
         role: "assistant",
         timestamp: new Date(),
       };
