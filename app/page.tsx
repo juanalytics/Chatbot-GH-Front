@@ -1,71 +1,89 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState, useRef, useEffect } from "react"
-import { Send } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ThemeToggle } from "@/components/theme-toggle"
+import React, { useState, useRef, useEffect } from "react";
+import { Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { sendPrompt } from "@/services/chat"; // Import the service
 
 interface Message {
-  id: string
-  content: string
-  role: "user" | "assistant"
-  timestamp: Date
+  id: string;
+  content: string;
+  role: "user" | "assistant";
+  timestamp: Date;
 }
 
 export default function ChatbotPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
-      content: "Hola! soy tu Asistente Zoom Virtual. Como te puedo ayudar el día de hoy?",
+      content:
+        "Hola! Soy tu Asistente Zoe Virtual. ¿Cómo te puedo ayudar el día de hoy?",
       role: "assistant",
       timestamp: new Date(),
     },
-  ])
-  const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  ]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // For now we set a demo token. Replace this with your actual token retrieval logic.
+  const token = "DEMO_TOKEN";
+  const userID = "DEMO_USER_ID";
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
   const handleSendMessage = async (e?: React.FormEvent) => {
-    e?.preventDefault()
+    e?.preventDefault();
 
-    if (!input.trim()) return
+    if (!input.trim()) return;
 
-    // Add user message
+    // Add the user message to the chat history.
     const userMessage: Message = {
       id: Date.now().toString(),
       content: input,
       role: "user",
       timestamp: new Date(),
-    }
+    };
 
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
 
-    // Simulate AI response after a delay
-    setTimeout(() => {
+    try {
+      // Call the backend via the service function.
+      const response = await sendPrompt(userMessage.content, token, userID);
+
+      // Assuming the response is a text string, wrap it as a message.
       const botResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: "Nice I found your chat history!\nGood query as well:",
+        content: response.answer, // Adjust if response has a different structure.
         role: "assistant",
         timestamp: new Date(),
-      }
+      };
 
-      setMessages((prev) => [...prev, botResponse])
-      setIsLoading(false)
-    }, 1500)
-  }
+      setMessages((prev) => [...prev, botResponse]);
+    } catch (error) {
+      console.error("Error sending prompt:", error);
+      // Optionally, add an error message to the chat.
+      const errorMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        content: "Hubo un herror contactando a Zoe. Intenta nuevamente en unos minutos.",
+        role: "assistant",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-svh bg-background">
@@ -73,9 +91,15 @@ export default function ChatbotPage() {
       <header className="border-b border-border py-4 px-6 flex items-center justify-between">
         <div className="flex items-center">
           <div className="h-10 w-auto">
-            <img src="/images/axa-colpatria-logo.png" alt="AXA COLPATRIA" className="h-full w-auto" />
+            <img
+              src="/images/axa-colpatria-logo.png"
+              alt="AXA COLPATRIA"
+              className="h-full w-auto"
+            />
           </div>
-          <h1 className="ml-3 text-lg font-medium text-primary">Asistente Zoe</h1>
+          <h1 className="ml-3 text-lg font-medium text-primary">
+            Asistente Zoe
+          </h1>
         </div>
         <div>
           <ThemeToggle />
@@ -87,19 +111,31 @@ export default function ChatbotPage() {
         <div className="max-w-3xl mx-auto">
           <div className="space-y-4">
             {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={message.id}
+                className={`flex ${
+                  message.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
                 <div
                   className={`max-w-[80%] md:max-w-[70%] rounded-2xl px-4 py-3 ${
-                    message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted border border-border"
+                    message.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted border border-border"
                   }`}
                 >
                   <p className="text-sm md:text-base">{message.content}</p>
                   <div
                     className={`text-xs mt-1 ${
-                      message.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
+                      message.role === "user"
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground"
                     }`}
                   >
-                    {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {message.timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </div>
                 </div>
               </div>
@@ -155,5 +191,5 @@ export default function ChatbotPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
