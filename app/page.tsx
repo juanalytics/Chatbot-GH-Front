@@ -1,33 +1,37 @@
-"use client";
+"use client"
 
-import React, { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ThemeToggle } from "@/components/theme-toggle";
+import type React from "react"
+
+import { useState, useRef, useEffect } from "react"
+import { Send, ThumbsUp, ThumbsDown } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { sendPrompt } from "@/services/chat";
+import { sendFeedback } from "@/services/feedback";
 import { msalInstance, loginRequest } from "@/lib/authConfig";
 
 interface Message {
-  id: string;
-  content: string;
-  role: "user" | "assistant";
-  timestamp: Date;
+  id: string
+  content: string
+  role: "user" | "assistant"
+  timestamp: Date
 }
 
 export default function ChatbotPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
-      content: "Hola! Soy tu Asistente Zoe Virtual. ¿Cómo te puedo ayudar hoy?",
+      content: "Hola! soy Emilia. Como te puedo ayudar el día de hoy?",
       role: "assistant",
       timestamp: new Date(),
     },
-  ]);
+  ])
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthInitialized, setIsAuthInitialized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messageFeedback, setMessageFeedback] = useState<Record<string, "like" | "dislike" | null>>({})
 
   // Initialize MSAL on mount.
   useEffect(() => {
@@ -43,12 +47,12 @@ export default function ChatbotPage() {
   }, []);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    scrollToBottom()
+  }, [messages])
 
   // Ad hoc function to acquire token and user information
   const getTokenAndUser = async () => {
@@ -85,27 +89,27 @@ export default function ChatbotPage() {
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!input.trim()) return;
+    e?.preventDefault()
+    if (!input.trim()) return
 
-    // Add the user's message to the chat history.
+    // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
       content: input,
       role: "user",
       timestamp: new Date(),
-    };
+    }
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setIsLoading(true)
 
     try {
       // Get token and user info ad hoc
-      const { idToken, userID } = await getTokenAndUser();
+      const { idToken } = await getTokenAndUser();
 
       // Send prompt to backend via our service function
-      const response = await sendPrompt(userMessage.content, idToken, userID);
+      const response = await sendPrompt(idToken, userMessage.content);
 
       const botResponse: Message = {
         id: (Date.now() + 1).toString(),
@@ -129,21 +133,37 @@ export default function ChatbotPage() {
     }
   };
 
+  const handleFeedback = async (messageId: string, type: "like" | "dislike") => {
+  setMessageFeedback((prev) => {
+    if (prev[messageId] === type) {
+      const newFeedback = { ...prev };
+      delete newFeedback[messageId];
+      return newFeedback;
+    }
+    return { ...prev, [messageId]: type };
+  });
+
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length === 0) throw new Error("No user account found");
+    const userId = accounts[0].username;
+    const { idToken } = await getTokenAndUser();
+    await sendFeedback(idToken, messageId, type);
+  } catch (error) {
+    console.error("Could not send feedback to backend:", error);
+  }
+};
+
+
   return (
     <div className="flex flex-col h-svh bg-background">
       {/* Header */}
       <header className="border-b border-border py-4 px-6 flex items-center justify-between">
         <div className="flex items-center">
           <div className="h-10 w-auto">
-            <img
-              src="/images/axa-colpatria-logo.png"
-              alt="AXA COLPATRIA"
-              className="h-full w-auto"
-            />
+            <img src="/images/axa-colpatria-logo.png" alt="AXA COLPATRIA" className="h-full w-auto" />
           </div>
-          <h1 className="ml-3 text-lg font-medium text-primary">
-            Asistente Zoe
-          </h1>
+          <h1 className="ml-3 text-lg font-medium text-primary">Asistente Emilia</h1>
         </div>
         <div>
           <ThemeToggle />
@@ -155,31 +175,49 @@ export default function ChatbotPage() {
         <div className="max-w-3xl mx-auto">
           <div className="space-y-4">
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
+              <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[80%] md:max-w-[70%] rounded-2xl px-4 py-3 ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted border border-border"
+                    message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted border border-border"
                   }`}
                 >
                   <p className="text-sm md:text-base">{message.content}</p>
-                  <div
-                    className={`text-xs mt-1 ${
-                      message.role === "user"
-                        ? "text-primary-foreground/70"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    {message.timestamp.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                  <div className="flex items-center justify-between mt-2">
+                    <div
+                      className={`text-xs ${
+                        message.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
+                      }`}
+                    >
+                      {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                    {message.role === "assistant" && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleFeedback(message.id, "like")}
+                          className={`p-1 rounded-full transition-colors ${
+                            messageFeedback[message.id] === "like"
+                              ? "bg-green-500/20 text-green-500"
+                              : "text-muted-foreground hover:text-foreground hover:bg-background"
+                          }`}
+                          aria-label="Like this message"
+                        >
+                          <ThumbsUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleFeedback(message.id, "dislike")}
+                          className={`p-1 rounded-full transition-colors ${
+                            messageFeedback[message.id] === "dislike"
+                              ? "bg-destructive/20 text-destructive"
+                              : "text-muted-foreground hover:text-foreground hover:bg-background"
+                          }`}
+                          aria-label="Dislike this message"
+                        >
+                          <ThumbsDown className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -230,10 +268,10 @@ export default function ChatbotPage() {
             </Button>
           </form>
           <div className="text-xs text-muted-foreground text-center mt-4">
-            AXA COLPATRIA © {new Date().getFullYear()} | Asistente Zoe
+            AXA COLPATRIA © {new Date().getFullYear()} | Asistente Emilia
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }
